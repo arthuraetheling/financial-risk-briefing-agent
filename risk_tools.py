@@ -146,6 +146,9 @@ def check_concentration(portfolio, argument):
     # A weight is a share of the whole portfolio. If one value is unknown the
     # total is unknown too, so every weight would be wrong. Report values only.
     if unknown:
+        # Largest known value first, holdings without a value last. In file order the
+        # model read the first row with a value (HLSW) as the largest known holding.
+        rows.sort(key=lambda row: (row['value'] is None, -(row['value'] or 0)))
         message = ('Weights cannot be calculated: ' + ', '.join(unknown)
                    + (' has' if len(unknown) == 1 else ' have') + ' no known value on ' + as_of
                    + ', so the total value of the portfolio is unknown. Values are shown for the other '

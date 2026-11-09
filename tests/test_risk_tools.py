@@ -9,15 +9,18 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import risk_tools  # noqa: E402
+import verify_numbers  # noqa: E402
 from risk_tools import check_concentration, check_price_changes, load_portfolio, read_number  # noqa: E402
 
 A = load_portfolio(ROOT / 'data' / 'portfolio_a.csv')
 B = load_portfolio(ROOT / 'data' / 'portfolio_b.csv')
-C = load_portfolio(ROOT / 'data' / 'portfolio_c.csv')
+A_MISSING = load_portfolio(ROOT / 'data' / 'portfolio_a_missing.csv')  # A with two cells deleted
 
 
 def by_ticker(rows):
@@ -33,11 +36,11 @@ class ReadFileTests(unittest.TestCase):
         self.assertIsNone(read_number('inf'))
 
     def test_blank_cells_become_none(self):
-        holdings = by_ticker(C['holdings'])
+        holdings = by_ticker(A_MISSING['holdings'])
         self.assertIsNone(holdings['NWSC']['shares'])
         self.assertIsNone(holdings['CLDN']['prices']['2026-04-30'])
         self.assertEqual(holdings['CLDN']['prices']['2026-05-29'], 38.65)
-        self.assertEqual(len(C['dates']), 7)
+        self.assertEqual(len(A_MISSING['dates']), 7)
 
     def write_csv(self, text):
         handle, path = tempfile.mkstemp(suffix='.csv')
@@ -85,7 +88,7 @@ class ConcentrationTests(unittest.TestCase):
         self.assertAlmostEqual(sum(row['weight_pct'] for row in data['holdings']), 100, delta=0.5)
 
     def test_missing_share_count_gives_no_weights(self):
-        outcome = check_concentration(C, {})
+        outcome = check_concentration(A_MISSING, {})
         data = outcome['data']
         self.assertTrue(outcome['ok'])
         self.assertFalse(data['weights_available'])
@@ -95,6 +98,8 @@ class ConcentrationTests(unittest.TestCase):
         self.assertNotIn('weight_pct', str(data))
         self.assertNotIn('flags', data)
         self.assertEqual(data['holdings_per_sector']['Technology'], 3)
+        # Largest known value first: BWBF 230 x 36.60 = 8,418.00, HLSW 60 x 121.70 = 7,302.00.
+        self.assertEqual([row['ticker'] for row in data['holdings']], ['BWBF', 'HLSW', 'CLDN', 'PMRX', 'GRNE', 'NWSC'])
 
     def test_rejects_arguments(self):
         self.assertFalse(check_concentration(A, {'by': 'sector'})['ok'])
@@ -144,7 +149,7 @@ class PriceChangeTests(unittest.TestCase):
         self.assertFalse(check_price_changes(A, {'tickers': ['NWSC']})['ok'])
 
     def test_missing_values_stop_portfolio_totals(self):
-        outcome = check_price_changes(C, {})
+        outcome = check_price_changes(A_MISSING, {})
         data = outcome['data']
         self.assertTrue(outcome['ok'])
         self.assertFalse(data['portfolio_totals_available'])
@@ -165,6 +170,44 @@ class PriceChangeTests(unittest.TestCase):
         data = check_price_changes(empty, {})['data']
         self.assertFalse(data['portfolio_totals_available'])
         self.assertFalse(check_concentration(empty, {})['ok'])
+
+
+class SeparateCalculationTests(unittest.TestCase):
+    """verify_numbers.py redoes the arithmetic with Decimal and compares it with the tools."""
+
+    def test_tool_numbers_match_the_exact_calculation(self):
+        check = verify_numbers.verify_files()
+        self.assertEqual(check.mismatches, [])
+        self.assertEqual(check.count, 418)  # a lower count would mean a comparison was skipped
+
+    def test_readme_numbers_match_the_exact_calculation(self):
+        check = verify_numbers.Check()
+        verify_numbers.readme_checks(check)
+        self.assertEqual(check.mismatches, [])
+
+    def test_saved_tool_results_match_a_rerun(self):
+        check = verify_numbers.Check()
+        verify_numbers.verify_traces(check, ROOT / 'results' / 'traces')
+        self.assertEqual(check.mismatches, [])
+        self.assertEqual(check.count, 113)
+
+    def test_a_missing_traces_folder_fails(self):
+        check = verify_numbers.Check()
+        verify_numbers.verify_traces(check, ROOT / 'results' / 'no_such_folder')
+        self.assertTrue(check.mismatches)
+
+    def test_a_wrong_tool_number_is_caught(self):
+        # Every percentage off by 0.1: the separate calculation has to notice.
+        with mock.patch.object(risk_tools, 'pct', lambda fraction: round(100 * fraction, 1) + 0.1):
+            check = verify_numbers.verify_files()
+        self.assertTrue(any('weight' in line for line in check.mismatches))
+        self.assertTrue(any('six-month change' in line for line in check.mismatches))
+
+    def test_a_changed_limit_is_caught(self):
+        # The limits come from the README, not from risk_tools.py.
+        with mock.patch.object(risk_tools, 'SINGLE_HOLDING_LIMIT_PCT', 25):
+            check = verify_numbers.verify_files()
+        self.assertTrue(any('limit' in line for line in check.mismatches))
 
 
 if __name__ == '__main__':

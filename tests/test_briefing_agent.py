@@ -16,7 +16,7 @@ from risk_tools import check_concentration, check_price_changes, load_portfolio 
 A_FILE = ROOT / 'data' / 'portfolio_a.csv'
 A = load_portfolio(A_FILE)
 B = load_portfolio(ROOT / 'data' / 'portfolio_b.csv')
-C = load_portfolio(ROOT / 'data' / 'portfolio_c.csv')
+A_MISSING = load_portfolio(ROOT / 'data' / 'portfolio_a_missing.csv')  # A with two cells deleted
 
 GOOD_ANSWER = {
     'summary': 'Portfolio A depends heavily on one stock and one sector.',
@@ -46,8 +46,8 @@ class ParseActionTests(unittest.TestCase):
 class FinalAnswerCheckTests(unittest.TestCase):
     def setUp(self):
         self.a_weights = check_concentration(A, {})
-        self.c_weights = check_concentration(C, {})
-        self.c_prices = check_price_changes(C, {})
+        self.missing_weights = check_concentration(A_MISSING, {})
+        self.missing_prices = check_price_changes(A_MISSING, {})
 
     def test_good_answer_is_accepted(self):
         self.assertEqual(check_final_answer(GOOD_ANSWER, [self.a_weights], 'Is this portfolio concentrated?'), [])
@@ -90,22 +90,22 @@ class FinalAnswerCheckTests(unittest.TestCase):
 
     def test_missing_data_must_be_mentioned(self):
         problems = check_final_answer(answer('Some values are missing.', ['Five holdings are worth $29,306.75.']),
-                                      [self.c_weights], 'q')
+                                      [self.missing_weights], 'q')
         self.assertTrue(any('names none of these holdings' in problem for problem in problems))
         named = answer('CLDN has no price on 2026-04-30, so its change is unknown.', ['GRNE fell 3.9%.'])
-        self.assertEqual(check_final_answer(named, [self.c_prices], 'q'), [])
+        self.assertEqual(check_final_answer(named, [self.missing_prices], 'q'), [])
         by_name = answer('The share count of Northwind Semiconductor is missing.', ['Its weight is unknown.'])
-        self.assertEqual(check_final_answer(by_name, [self.c_weights], 'q'), [])
+        self.assertEqual(check_final_answer(by_name, [self.missing_weights], 'q'), [])
 
     def test_briefing_lists_every_missing_value(self):
         named = answer('CLDN has no price on 2026-04-30, so its change is unknown.', ['GRNE fell 3.9%.'])
-        text = briefing_agent.render_briefing('Portfolio C', 'q', [{'tool': 'check_price_changes', 'ok': True}],
-                                              [self.c_prices], named)
+        text = briefing_agent.render_briefing('Portfolio A, two values missing','q', [{'tool': 'check_price_changes', 'ok': True}],
+                                              [self.missing_prices], named)
         self.assertIn('Missing data reported by the tools:', text)
         self.assertIn('- NWSC (Northwind Semiconductor): share count is missing', text)
         self.assertIn('- CLDN (Cloudline Networks): no price on 2026-04-30', text)
         # The same gap reported by both tools becomes one line.
-        both = briefing_agent.render_briefing('Portfolio C', 'q', [], [self.c_weights, self.c_prices], named)
+        both = briefing_agent.render_briefing('Portfolio A, two values missing','q', [], [self.missing_weights, self.missing_prices], named)
         self.assertEqual(both.count('- NWSC '), 1)
         self.assertIn('its value and weight are unknown; its value change and the portfolio totals cannot be '
                       'calculated; its price change is known', both)
@@ -113,21 +113,21 @@ class FinalAnswerCheckTests(unittest.TestCase):
     def test_no_concentration_claim_without_weights(self):
         claim = answer('The portfolio is well diversified.',
                        ['NWSC has no share count; the other five holdings are worth $29,306.75.'])
-        problems = check_final_answer(claim, [self.c_weights], 'q')
+        problems = check_final_answer(claim, [self.missing_weights], 'q')
         self.assertTrue(any('cannot say whether it is concentrated' in problem for problem in problems))
         hedged = answer('It is not possible to say whether the portfolio is diversified, because NWSC has no '
                         'share count.', ['Concentration in Technology cannot be measured until NWSC is known.'])
-        self.assertEqual(check_final_answer(hedged, [self.c_weights], 'q'), [])
+        self.assertEqual(check_final_answer(hedged, [self.missing_weights], 'q'), [])
         # A hedge in another clause does not cover the claim (seen in a development run).
         mixed = answer('NWSC has no share count.', ['The portfolio has a high concentration in Technology with '
                                                     'multiple holdings, but the total value is unknown.'])
-        problems = check_final_answer(mixed, [self.c_weights], 'q')
+        problems = check_final_answer(mixed, [self.missing_weights], 'q')
         self.assertTrue(any('cannot say whether it is concentrated' in problem for problem in problems))
 
     def test_no_portfolio_move_without_totals(self):
         claim = answer('The portfolio fell 3.9% over the period.',
                        ['GRNE fell 3.9%. NWSC has no share count and CLDN has no price on 2026-04-30.'])
-        problems = check_final_answer(claim, [self.c_prices], 'q')
+        problems = check_final_answer(claim, [self.missing_prices], 'q')
         self.assertTrue(any('cannot say how the whole portfolio moved' in problem for problem in problems))
 
     def test_wrong_direction_is_rejected(self):
@@ -141,8 +141,8 @@ class FinalAnswerCheckTests(unittest.TestCase):
                        ['NWSC fell 11.5% in its worst month and still rose 6.3% overall.'])
         self.assertEqual(check_final_answer(mixed, [check_price_changes(A, {})], 'q'), [])
 
-    def test_false_alarms_from_the_final_run(self):
-        # Both answers were correct but were sent back in the final run (seeds 11 to 15).
+    def test_false_alarms_from_the_second_run(self):
+        # Both answers were correct but were sent back in the second full run (seeds 11 to 15).
         a_prices = check_price_changes(A, {})
         portfolio_it = answer('This briefing cannot answer whether to sell. NWSC is 44.0% of the portfolio. The '
                               'portfolio has generally risen, though it fell by more than 6% in two months.',
@@ -152,7 +152,7 @@ class FinalAnswerCheckTests(unittest.TestCase):
         not_measurable = answer('The concentration cannot be measured because NWSC has no share count.',
                                 ['The portfolio has four sectors, but the concentration in each is not measurable '
                                  'due to missing data.'])
-        self.assertEqual(check_final_answer(not_measurable, [self.c_weights], 'q'), [])
+        self.assertEqual(check_final_answer(not_measurable, [self.missing_weights], 'q'), [])
 
     def test_cases_from_the_independent_review(self):
         a_both = [self.a_weights, check_price_changes(A, {})]
@@ -176,27 +176,27 @@ class FinalAnswerCheckTests(unittest.TestCase):
         self.assertEqual(problems_for('NWSC is 44.0% of the portfolio; the largest fall of any holding was 8.0%.',
                                       a_both), [])
         # "Missing" is not a hedge, and "potential sector concentration" is a claim.
-        c_weights = [self.c_weights]
+        missing_weights = [self.missing_weights]
         self.assertTrue(flagged(problems_for('The portfolio is concentrated in Technology even with the NWSC share '
-                                             'count missing.', c_weights, ['NWSC has no share count.']),
+                                             'count missing.', missing_weights, ['NWSC has no share count.']),
                                 'cannot say whether it is concentrated'))
         self.assertTrue(flagged(problems_for('The main risks include potential sector concentration and the unknown '
-                                             'value of NWSC.', c_weights, ['NWSC has no share count.']),
+                                             'value of NWSC.', missing_weights, ['NWSC has no share count.']),
                                 'cannot say whether it is concentrated'))
-        # The largest holding and the largest fall are unknown in Portfolio C.
-        self.assertTrue(flagged(problems_for('The largest holding is BWBF, worth $8,418.00.', c_weights,
+        # With two values missing, the largest holding and the largest fall are unknown.
+        self.assertTrue(flagged(problems_for('The largest holding is BWBF, worth $8,418.00.', missing_weights,
                                              ['NWSC has no share count.']), 'largest holding is not known'))
         self.assertEqual(problems_for('The largest holding cannot be identified, because NWSC has no share count.',
-                                      c_weights, ['Among holdings with a known value, BWBF is worth $8,418.00.']), [])
-        c_prices = [self.c_prices]
+                                      missing_weights, ['Among holdings with a known value, BWBF is worth $8,418.00.']), [])
+        missing_prices = [self.missing_prices]
         self.assertTrue(flagged(problems_for('The holding that lost the most value was GRNE, which fell 3.9%.',
-                                             c_prices, ['CLDN has no price on 2026-04-30.']),
+                                             missing_prices, ['CLDN has no price on 2026-04-30.']),
                                 'cannot say which holding fell or rose the most'))
         self.assertTrue(flagged(problems_for('The largest price increase was for NWSC, which rose 6.3%.',
-                                             c_prices, ['CLDN has no price on 2026-04-30.']),
+                                             missing_prices, ['CLDN has no price on 2026-04-30.']),
                                 'cannot say which holding fell or rose the most'))
         self.assertEqual(problems_for("Among holdings with a known change, GRNE fell the most (3.9%); CLDN's change "
-                                      'is unknown.', c_prices, ['CLDN has no price on 2026-04-30.']), [])
+                                      'is unknown.', missing_prices, ['CLDN has no price on 2026-04-30.']), [])
         # A refusal has to be about the decision.
         self.assertTrue(flagged(problems_for('The file does not say why NWSC rose.', a_both,
                                              question='Should I sell part of my largest holding?'),
@@ -226,34 +226,34 @@ class FinalAnswerCheckTests(unittest.TestCase):
         # The top-three weight has no limit.
         self.assertTrue(flagged(problems_for('The top three holdings are 36.5% of the portfolio, within acceptable '
                                              'limits.', b_both), 'no limit for the top-three weight'))
-        # Portfolio C: no holding can be called the largest, and the known ranking is checked.
-        c = [self.c_weights]
+        # NWSC has no value: no holding can be called the largest, and the known ranking is checked.
+        missing = [self.missing_weights]
         self.assertTrue(flagged(problems_for('This briefing cannot answer that. The largest holding, Northwind '
                                              'Semiconductor, has an unknown value, so it is not possible to say if '
-                                             'it is too large.', c, ['NWSC has no share count.']),
+                                             'it is too large.', missing, ['NWSC has no share count.']),
                                 'NWSC has no known value, so it cannot be ranked'))
         self.assertTrue(flagged(problems_for('Harbor Lane Software is the largest holding by value among the holdings '
-                                             'with known values.', c, ['NWSC has no share count.']),
+                                             'with known values.', missing, ['NWSC has no share count.']),
                                 'The largest holding with a known value is BWBF'))
         self.assertTrue(flagged(problems_for('No holding or sector exceeds the limits based on the available data.',
-                                             c, ['NWSC has no share count.']),
+                                             missing, ['NWSC has no share count.']),
                                 'cannot say whether it is concentrated'))
-        self.assertEqual(problems_for('It is not possible to determine whether NWSC is the largest holding.', c,
+        self.assertEqual(problems_for('It is not possible to determine whether NWSC is the largest holding.', missing,
                                       ['NWSC has no share count.']), [])
         # NWSC cannot be "among holdings with a known value"; BWBF can.
-        c_both = [self.c_weights, self.c_prices]
+        missing_both = [self.missing_weights, self.missing_prices]
         self.assertTrue(flagged(problems_for("Among holdings with a known value, Northwind Semiconductor's price rose "
-                                             '6.3%.', c_both, ['CLDN has no price on 2026-04-30.']),
+                                             '6.3%.', missing_both, ['CLDN has no price on 2026-04-30.']),
                                 'NWSC has no known value'))
         self.assertEqual(problems_for('Among holdings with a known value, BWBF is worth the most, since NWSC has no '
-                                      'share count.', c_both, ['CLDN has no price on 2026-04-30.']), [])
+                                      'share count.', missing_both, ['CLDN has no price on 2026-04-30.']), [])
         # A cannot_establish item that names "the largest fall" is not a claim.
         self.assertEqual(check_final_answer(answer("Among holdings with a known change, GRNE fell 3.9%. CLDN's change "
                                                    'is unknown.', ['GRNE fell 3.9%.'],
                                                    ['The largest fall, since the change of CLDN is unknown.']),
-                                            [self.c_prices], 'q'), [])
+                                            [self.missing_prices], 'q'), [])
         self.assertTrue(flagged(problems_for('The only holding that lost value was GRNE, which fell 3.9%.',
-                                             [self.c_prices], ['CLDN has no price on 2026-04-30.']),
+                                             [self.missing_prices], ['CLDN has no price on 2026-04-30.']),
                                 'cannot say which holding fell or rose the most'))
 
     def test_number_of_another_holding_is_rejected(self):

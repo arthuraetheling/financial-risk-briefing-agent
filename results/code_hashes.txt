@@ -1,0 +1,25 @@
+SHA-256 of the files that produce the reported run (results/traces, seeds 41 to 45).
+Taken before the run started (2026-11-09 12:29:22) and again after it finished.
+
+Before:
+fb8c4b3f3d734c08cb72e176bc30bb0b4e3b3a6cccb3b0e8c0bfd242b3f1a412  briefing_agent.py
+b8dc08223eabf8a6b5e565a46ed34ea3ba964d07fed328476e82086e327d64e3  risk_tools.py
+7ced52c0b6d57ee543c7d7c882be506290b58a78202b81ae5e934d1b2e942286  run_demo.py
+33b7cea71bfbad3bc6e3e7944760e1bc572bf48ac3283248f58fa64184e714b7  data/portfolio_a.csv
+a2923912da56c7687a4676fb655486a27dc58db8be5a00a7c01e4b1b28e11abc  data/portfolio_b.csv
+fa926239d922d19ebb0189b5ea99e1fca7017d34160860ec72ffcba02c54951c  data/portfolio_a_missing.csv
+
+After:
+fb8c4b3f3d734c08cb72e176bc30bb0b4e3b3a6cccb3b0e8c0bfd242b3f1a412  briefing_agent.py
+b8dc08223eabf8a6b5e565a46ed34ea3ba964d07fed328476e82086e327d64e3  risk_tools.py
+7ced52c0b6d57ee543c7d7c882be506290b58a78202b81ae5e934d1b2e942286  run_demo.py
+33b7cea71bfbad3bc6e3e7944760e1bc572bf48ac3283248f58fa64184e714b7  data/portfolio_a.csv
+a2923912da56c7687a4676fb655486a27dc58db8be5a00a7c01e4b1b28e11abc  data/portfolio_b.csv
+fa926239d922d19ebb0189b5ea99e1fca7017d34160860ec72ffcba02c54951c  data/portfolio_a_missing.csv
+
+The hashes are of the files with LF line endings, which is how Git stores them. A Windows
+checkout with core.autocrlf=true writes CRLF endings, which changes the hashes.
+
+The two lists are identical. To check a copy of this project:
+    certutil -hashfile risk_tools.py SHA256    (Windows)
+    sha256sum briefing_agent.py risk_tools.py run_demo.py data/*.csv    (macOS or Linux)

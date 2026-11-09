@@ -1,8 +1,8 @@
 """Run the demonstration cases and write a record of what happened.
 
 Usage:
-    python run_demo.py                      # every case, seeds 31 to 35 (the reported run)
-    python run_demo.py --seeds 31 --cases A-Q1 B-Q1
+    python run_demo.py                      # every case, seeds 41 to 45 (the reported run)
+    python run_demo.py --seeds 41 --cases A-Q1 B-Q1
     python run_demo.py --rebuild            # redo the summary files from saved traces, no model calls
 
 Writes results/traces/<case>-s<seed>.json, results/runs.csv, and
@@ -23,10 +23,12 @@ import briefing_agent
 
 HERE = Path(__file__).resolve().parent
 
+# Two portfolios, A and B. The third file is not a third portfolio: it is A's file
+# with two cells deleted, used as the incomplete-information case.
 PORTFOLIOS = {
     'A': ('data/portfolio_a.csv', 'Portfolio A'),
     'B': ('data/portfolio_b.csv', 'Portfolio B'),
-    'C': ('data/portfolio_c.csv', 'Portfolio C'),
+    'A-missing': ('data/portfolio_a_missing.csv', 'Portfolio A, two values missing'),
 }
 
 QUESTIONS = {
@@ -45,8 +47,9 @@ EXPECTED_TOOLS = {
     'Q3': ('exact', {'check_concentration'}),
     'Q4': ('exact', {'check_price_changes'}),
     'Q5': ('includes', {'check_concentration'}),
-    # In Portfolio C the largest position cannot be identified, so the price tool is optional.
-    'C-Q2': ('includes', {'check_concentration'}),
+    # With NWSC's share count missing, the largest position cannot be identified, so the
+    # price tool is optional.
+    'A-missing-Q2': ('includes', {'check_concentration'}),
 }
 
 # Facts I expect a correct briefing to state, written as patterns over the
@@ -54,27 +57,33 @@ EXPECTED_TOOLS = {
 EXPECTED_FACTS = {
     'A-Q1': [r'\bNWSC\b|Northwind', r'\b44(\.0)?\s*%', r'\b67\.9\s*%'],
     'B-Q1': [r'\b10\.4\s*%', r'\bSFHM\b|Summit|\bOKRT\b|Oak Street|\bRVBK\b|Riverbend'],
-    'C-Q1': [r'\bNWSC\b|Northwind', r'\bCLDN\b|Cloudline'],
+    'A-missing-Q1': [r'\bNWSC\b|Northwind', r'\bCLDN\b|Cloudline'],
     'A-Q2': [r'\bNWSC\b|Northwind', r'\b44(\.0)?\s*%', r'\b6\.3\s*%|\b11\.5\s*%'],
     'B-Q2': [r'\bBWBF\b|Bluewater', r'\b13\.6\s*%', r'\b1\.1\s*%'],
-    'C-Q2': [r'\bNWSC\b|Northwind'],
+    'A-missing-Q2': [r'\bNWSC\b|Northwind'],
     'A-Q3': [r'\b44(\.0)?\s*%', r'\b67\.9\s*%'],
     'B-Q3': [r'\b13\.6\s*%'],
-    'C-Q3': [r'\bNWSC\b|Northwind'],
+    'A-missing-Q3': [r'\bNWSC\b|Northwind'],
     'A-Q4': [r'\bCLDN\b|Cloudline', r'\b8(\.0)?\s*%'],
     'B-Q4': [r'\b34\.1\s*%', r'\b26\.9\s*%', r'\b22(\.0)?\s*%'],
-    'C-Q4': [r'\bCLDN\b|Cloudline', r'\bGRNE\b|Granite', r'\b3\.9\s*%'],
+    'A-missing-Q4': [r'\bCLDN\b|Cloudline', r'\bGRNE\b|Granite', r'\b3\.9\s*%'],
     'A-Q5': [r'\bNWSC\b|Northwind', r'\b44(\.0)?\s*%'],
     'B-Q5': [r'\bBWBF\b|Bluewater', r'\b13\.6\s*%'],
-    'C-Q5': [r'\bNWSC\b|Northwind'],
+    'A-missing-Q5': [r'\bNWSC\b|Northwind'],
 }
 
-ALL_CASES = ['A-Q1', 'B-Q1', 'C-Q1', 'A-Q2', 'B-Q2', 'C-Q2', 'A-Q3', 'B-Q3', 'C-Q3',
-             'A-Q4', 'B-Q4', 'C-Q4', 'A-Q5', 'B-Q5', 'C-Q5']
+ALL_CASES = ['A-Q1', 'B-Q1', 'A-missing-Q1', 'A-Q2', 'B-Q2', 'A-missing-Q2', 'A-Q3', 'B-Q3', 'A-missing-Q3',
+             'A-Q4', 'B-Q4', 'A-missing-Q4', 'A-Q5', 'B-Q5', 'A-missing-Q5']
+
+
+def split_case(case):
+    # 'A-missing-Q3' -> ('A-missing', 'Q3')
+    portfolio_id, question_id = case.rsplit('-', 1)
+    return portfolio_id, question_id
 
 
 def tools_match(case, record):
-    mode, expected = EXPECTED_TOOLS.get(case) or EXPECTED_TOOLS[case.split('-')[1]]
+    mode, expected = EXPECTED_TOOLS.get(case) or EXPECTED_TOOLS[split_case(case)[1]]
     used = {call['tool'] for call in record['tool_calls'] if call['ok']}
     return used == expected if mode == 'exact' else expected <= used
 
@@ -149,7 +158,7 @@ def write_record(rows, records, out_dir, seeds, ollama_version):
     ]
     for case in dict.fromkeys(row['case'] for row in rows):
         group = [row for row in rows if row['case'] == case]
-        question_id = case.split('-')[1]
+        question_id = split_case(case)[1]
         facts = sum(int(row['facts_found']) for row in group)
         facts_total = sum(int(row['facts_expected']) for row in group)
         lines.append('| {} | {} | {} | {} | {} | {} | {:.1f} | {} |'.format(
@@ -161,7 +170,7 @@ def write_record(rows, records, out_dir, seeds, ollama_version):
             sum(int(row['final_attempts']) > 1 for row in group)))
 
     for case, record in records:
-        portfolio_id, question_id = case.split('-')
+        portfolio_id, question_id = split_case(case)
         lines += ['', '## ' + case + ': ' + PORTFOLIOS[portfolio_id][1] + ', "' + QUESTIONS[question_id] + '"', '']
         lines.append('Seed ' + str(record['seed']) + ', status ' + record['status'] + ', '
                      + str(record['steps']) + ' model replies, ' + str(record['seconds']) + ' s.')
@@ -174,7 +183,7 @@ def write_record(rows, records, out_dir, seeds, ollama_version):
 
 
 def summary_row(case, record):
-    portfolio_id, question_id = case.split('-')
+    portfolio_id, question_id = split_case(case)
     found, expected = facts_found(case, record)
     return {
         'case': case,
@@ -196,7 +205,7 @@ def summary_row(case, record):
 
 def main():
     parser = argparse.ArgumentParser(description='Run the demonstration cases.')
-    parser.add_argument('--seeds', type=int, nargs='+', default=[31, 32, 33, 34, 35])
+    parser.add_argument('--seeds', type=int, nargs='+', default=[41, 42, 43, 44, 45])
     parser.add_argument('--cases', nargs='+', default=ALL_CASES, choices=ALL_CASES)
     parser.add_argument('--out', default='results')
     parser.add_argument('--rebuild', action='store_true',
@@ -217,7 +226,7 @@ def main():
     rows = []
     shown = []
     for case in args.cases:
-        portfolio_id, question_id = case.split('-')
+        portfolio_id, question_id = split_case(case)
         path, label = PORTFOLIOS[portfolio_id]
         for seed in args.seeds:
             trace_file = traces / (case + '-s' + str(seed) + '.json')
