@@ -702,6 +702,7 @@ known" could then be compared with the tool result directly.
 | [run_demo.py](run_demo.py) | Runs the 15 cases and writes the results; `--rebuild` redoes the summary from saved traces (its "Generated" line then shows the time of the rebuild) |
 | [verify_numbers.py](verify_numbers.py) | Recomputes every tool number and the README's Data numbers with exact arithmetic; `--traces` also reruns the tools for a saved run |
 | [data/](data/) | Portfolios A and B, and A's file with two values deleted |
+| [docs/](docs/) | The presentation (PowerPoint, with a PDF copy) and the project document (PDF) |
 | [tests/](tests/) | 49 unit tests: tool numbers checked by hand and against `verify_numbers.py`, the loop with a fake model, and the checks on real mistakes from my runs |
 | [results/run_record.md](results/run_record.md) | Summary table and the seed-41 run of every case, step by step |
 | [results/runs.csv](results/runs.csv) | One row per run: status, tools, steps, first rejection, time |
