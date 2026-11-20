@@ -76,6 +76,13 @@ ollama pull qwen3:8b
 python briefing_agent.py data/portfolio_a.csv "What are the main risks in this portfolio?" --label "Portfolio A" --seed 44
 ```
 
+The command prints every step: the model's action, the tool result, and Python's
+check of each final answer. A saved run can be shown the same way without Ollama:
+
+```bash
+python tools/show_run.py results/traces/A-Q1-s44.json
+```
+
 ```bash
 python -m unittest discover -s tests -v
 ```
@@ -92,8 +99,9 @@ The 49 unit tests do not need Ollama. They do four things:
 - run the agent loop with a scripted fake model;
 - feed the answer checks the real mistakes collected from my runs.
 
-`python run_demo.py` repeats the reported evaluation (15 cases, seeds 41 to 45). It
-took 14 minutes on my laptop (RTX 4060 Laptop GPU, 8 GB), and it overwrites
+`python run_demo.py --out my_run` repeats the reported evaluation (15 cases, seeds 41
+to 45) and writes it to `my_run/`. It took 14 minutes on my laptop (RTX 4060 Laptop
+GPU, 8 GB). Without `--out` it writes to `results/` and overwrites
 `results/runs.csv`, `results/run_record.md` and `results/traces/`.
 
 A fixed seed makes reruns close but not always identical. Three reruns of the
@@ -712,4 +720,4 @@ known" could then be compared with the tool result directly.
 | [results/rerun_A-Q1-s44.json](results/rerun_A-Q1-s44.json) | The quick-start command rerun with seed 44 |
 | [results/fourth_run/](results/fourth_run/) | The previous reported run (seeds 31 to 35), made when the incomplete file was called `portfolio_c.csv`, with its review and a note on how it relates to the current code |
 | [results/first_run/](results/first_run/), [second_run/](results/second_run/), [third_run/](results/third_run/) | The three earlier full runs, made with older versions of the checks |
-| [tools/](tools/) | Scripts used for the review: `print_answers.py` prints each run's accepted answer, or the last answer of a rejected run; `replay_checks.py` runs the current checks again on saved answers; `count_rejections.py` counts which checks sent answers back |
+| [tools/](tools/) | `show_run.py` prints a saved run step by step, as a live run does, without calling the model. Scripts used for the review: `print_answers.py` prints each run's accepted answer, or the last answer of a rejected run; `replay_checks.py` runs the current checks again on saved answers; `count_rejections.py` counts which checks sent answers back |
